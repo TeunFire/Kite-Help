@@ -1,46 +1,110 @@
 require("dotenv").config();
+
 const { Client, Collection } = require("discord.js");
 
-const client = new Client({ intents: 32767 });
+// ─────────────────────────────────────────────
+// Configuration
+// ─────────────────────────────────────────────
 
-// Export client so other modules can require('./index') safely
-module.exports = client;
+const token = process.env.TOKEN?.trim().replace(/^Bot\s+/i, "");
 
-// Global Variables
+if (!token) {
+    console.error(
+        "Missing TOKEN in .env.\n" +
+        "Add it like this:\n" +
+        "TOKEN=your_bot_token"
+    );
+
+    process.exit(1);
+}
+
+// ─────────────────────────────────────────────
+// Client Setup
+// ─────────────────────────────────────────────
+
+const client = new Client({
+    // Replace this with specific intents if possible.
+    // 32767 enables every intent and may require privileged intents.
+    intents: 32767,
+});
+
 client.commands = new Collection();
 client.slashCommands = new Collection();
 
-// Initializing the project (safe loader for handler)
-try {
-    const handler = require("./handler");
-    if (typeof handler === "function") {
-        handler(client);
-    } else if (handler && typeof handler.init === "function") {
-        handler.init(client);
-    } else {
-        console.error("handler export is not callable. Export a function or provide an init(client) method.");
+// Export the client so other files can require("./index")
+module.exports = client;
+
+// ─────────────────────────────────────────────
+// Handler Setup
+// ─────────────────────────────────────────────
+
+function loadHandler() {
+    try {
+        const handler = require("./handler");
+
+        if (typeof handler === "function") {
+            handler(client);
+            return;
+        }
+
+        if (handler && typeof handler.init === "function") {
+            handler.init(client);
+            return;
+        }
+
+        throw new Error(
+            "The handler must export a function or an init(client) method."
+        );
+    } catch (error) {
+        console.error("Failed to load handler:");
+        console.error(error);
+
         process.exit(1);
     }
-} catch (err) {
-    console.error("Failed to load handler:", err);
-    process.exit(1);
 }
 
-// check token and login (sanitized)
-const rawToken = process.env.TOKEN;
-const token = rawToken ? rawToken.trim().replace(/^Bot\s+/i, '') : '';
-if (!token) {
-    console.error("Missing or empty TOKEN in .env — open .env and set: TOKEN=your_bot_token (no quotes, no leading 'Bot ').");
-    process.exit(1);
-}
-console.log(`Using token length: ${token.length} characters (masked)`);
+// ─────────────────────────────────────────────
+// Login
+// ─────────────────────────────────────────────
 
-client.login(token).then(() => {
-    console.log('Login successful');
-}).catch(err => {
-    console.error('Login failed:', err);
-    if (err && /TokenInvalid/i.test(String(err))) {
-        console.error("TokenInvalid: reset the token in the Discord Developer Portal and update .env with TOKEN=your_new_token (no quotes).");
+async function startBot() {
+    try {
+        loadHandler();
+
+        console.log(`Token loaded successfully.`);
+        console.log(`Token length: ${token.length} characters`);
+
+        await client.login(token);
+
+        console.log("Login successful.");
+    } catch (error) {
+        console.error("Login failed:");
+        console.error(error);
+
+        if (/TokenInvalid/i.test(String(error))) {
+            console.error(
+                "Your token is invalid. Reset it in the Discord Developer Portal " +
+                "and update TOKEN in your .env file."
+            );
+        }
+
+        process.exitCode = 1;
     }
-    // do not force-exit here; fix token and restart the process manually
+}
+
+// ─────────────────────────────────────────────
+// Error Handling
+// ─────────────────────────────────────────────
+
+process.on("unhandledRejection", (error) => {
+    console.error("Unhandled promise rejection:");
+    console.error(error);
 });
+
+process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:");
+    console.error(error);
+});
+
+// Start the bot
+startBot();
